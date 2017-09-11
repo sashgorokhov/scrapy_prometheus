@@ -1,0 +1,6 @@
+version: '2.1'
+services:
+  pushgateway:
+    image: prom/pushgateway
+    ports:
+      - "127.0.0.1:9091:9091"
