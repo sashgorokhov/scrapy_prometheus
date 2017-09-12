@@ -10,6 +10,12 @@ scrapy_prometheus
 .. image:: https://img.shields.io/github/license/sashgorokhov/scrapy_prometheus.svg
     :target: https://raw.githubusercontent.com/sashgorokhov/scrapy_prometheus/master/LICENSE
 
+.. image:: https://img.shields.io/pypi/pyversions/scrapy_prometheus.svg
+    :target: https://pypi.python.org/pypi/scrapy-prometheus
+
+.. image:: https://badge.fury.io/py/scrapy_prometheus.svg 
+    :target: https://badge.fury.io/py/scrapy-prometheus
+
 Exporting scrapy stats as prometheus metrics through pushgateway service.
 
 
