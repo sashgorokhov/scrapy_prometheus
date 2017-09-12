@@ -72,4 +72,53 @@ For example:
 * stat ``foo/bar: 67`` whill produce metric ``scrapy_prometheus_foo{instance="...",job="scrapy",substat="bar"} 67``
 * stat ``foo/bar/baz: 67`` whill produce metric ``scrapy_prometheus_foo{instance="...",job="scrapy",substat="bar/baz"} 67``
 
+Real world example
+------------------
+
+.. code-block:: text
+
+    # HELP scrapy_prometheus_download_latency Scrapy download latency
+    # TYPE scrapy_prometheus_download_latency summary
+    scrapy_prometheus_download_latency_sum{instance="",job="scrapy"} 113.67475485801697
+    scrapy_prometheus_download_latency_count{instance="",job="scrapy"} 34
+    # HELP scrapy_prometheus_spider_lifetime Scrapy spider lifetime
+    # TYPE scrapy_prometheus_spider_lifetime summary
+    scrapy_prometheus_spider_lifetime_sum{cls="StorySpider",instance="",job="scrapy"} 45
+    scrapy_prometheus_spider_lifetime_count{cls="StorySpider",instance="",job="scrapy"} 1
+    # HELP scrapy_prometheus_stats_downloader downloader
+    # TYPE scrapy_prometheus_stats_downloader gauge
+    scrapy_prometheus_stats_downloader{instance="",job="scrapy",substat="request_bytes"} 15186
+    scrapy_prometheus_stats_downloader{instance="",job="scrapy",substat="request_count"} 34
+    scrapy_prometheus_stats_downloader{instance="",job="scrapy",substat="request_method_count/GET"} 15
+    scrapy_prometheus_stats_downloader{instance="",job="scrapy",substat="request_method_count/POST"} 19
+    scrapy_prometheus_stats_downloader{instance="",job="scrapy",substat="response_bytes"} 805171
+    scrapy_prometheus_stats_downloader{instance="",job="scrapy",substat="response_count"} 34
+    scrapy_prometheus_stats_downloader{instance="",job="scrapy",substat="response_status_count/200"} 31
+    scrapy_prometheus_stats_downloader{instance="",job="scrapy",substat="response_status_count/406"} 3
+    # HELP scrapy_prometheus_stats_httperror httperror
+    # TYPE scrapy_prometheus_stats_httperror gauge
+    scrapy_prometheus_stats_httperror{instance="",job="scrapy",substat="response_ignored_count"} 3
+    scrapy_prometheus_stats_httperror{instance="",job="scrapy",substat="response_ignored_status_count/406"} 3
+    # HELP scrapy_prometheus_stats_item_scraped_count item_scraped_count
+    # TYPE scrapy_prometheus_stats_item_scraped_count gauge
+    scrapy_prometheus_stats_item_scraped_count{instance="",job="scrapy",substat=""} 2792
+    # HELP scrapy_prometheus_stats_log_count log_count
+    # TYPE scrapy_prometheus_stats_log_count gauge
+    scrapy_prometheus_stats_log_count{instance="",job="scrapy",substat="INFO"} 30
+    # HELP scrapy_prometheus_stats_memusage memusage
+    # TYPE scrapy_prometheus_stats_memusage gauge
+    scrapy_prometheus_stats_memusage{instance="",job="scrapy",substat="max"} 7.2527872e+07
+    scrapy_prometheus_stats_memusage{instance="",job="scrapy",substat="startup"} 7.2527872e+07
+    # HELP scrapy_prometheus_stats_request_depth_max request_depth_max
+    # TYPE scrapy_prometheus_stats_request_depth_max gauge
+    scrapy_prometheus_stats_request_depth_max{instance="",job="scrapy",substat=""} 2
+    # HELP scrapy_prometheus_stats_response_received_count response_received_count
+    # TYPE scrapy_prometheus_stats_response_received_count gauge
+    scrapy_prometheus_stats_response_received_count{instance="",job="scrapy",substat=""} 34
+    # HELP scrapy_prometheus_stats_scheduler scheduler
+    # TYPE scrapy_prometheus_stats_scheduler gauge
+    scrapy_prometheus_stats_scheduler{instance="",job="scrapy",substat="dequeued"} 34
+    scrapy_prometheus_stats_scheduler{instance="",job="scrapy",substat="dequeued/memory"} 34
+    scrapy_prometheus_stats_scheduler{instance="",job="scrapy",substat="enqueued"} 34
+    scrapy_prometheus_stats_scheduler{instance="",job="scrapy",substat="enqueued/memory"} 34
 
