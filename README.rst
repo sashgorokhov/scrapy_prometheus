@@ -16,8 +16,7 @@ scrapy_prometheus
 .. image:: https://badge.fury.io/py/scrapy_prometheus.svg 
     :target: https://badge.fury.io/py/scrapy-prometheus
 
-Exporting scrapy stats as prometheus metrics through pushgateway service.
-
+Scrapy stats collector that exports scrapy stats as prometheus metrics through pushgateway service.
 
 Installation
 ============
@@ -32,93 +31,68 @@ Via pip:
 Usage
 =====
 
-To start using, add ``scrapy_prometheus.PrometheusStatsReport`` to EXTENSIONS setting:
+To start using, add ``scrapy_prometheus.PrometheusStatsCollector`` to STATS_CLASS setting:
 
 .. code-block:: python
-    
-    EXTENSIONS = {
-        'scrapy_prometheus.PrometheusStatsReport': 500,
-    }
-    
-    PROMETHEUS_EXPORT_ENABLED = True # default
-    
+
+    STATS_CLASS = 'scrapy_prometheus.PrometheusStatsCollector'
+
+
+This stats collector works exactly like the vanilla one (because it subclasses it), but also
+creates prometheus metrics and pushes them to pushgateway service on spider close signal.
+
+It supports two metric types: ``Counter`` and ``Gauge``. Stat metric type is determined by operation used on
+the stat: ``stats.inc_value`` will create a ``Counter`` metric, while other methods,
+``stats.set_value``, ``stats.max_value``, ``stats.min_value``, will create ``Gauge``.
+
+Stat value must be either ``int`` or ``float``.
+
+Note, that trying to perform action on a metric, that is not supposed to be used with this
+action (set_value on Counter or inc_value on Gauge) will produce
+``scrapy_prometheus.InvalidMetricType`` error. To suppress it, set ``PROMETHEUS_SUPPRESS_TYPE_CHECK`` to True.
+
+If you want to create other custom metrics, there are good news for you: ``scrapy_prometheus.PrometheusStatsCollector`` is
+also a ``prometheus_client.CollectorRegistry``. Multi-inheritance rules.
+Just specify it as a registry, when creating a metric.
+
+Available settings
+==================
+
+.. code-block:: python
+
     # Prometheus pushgateway host
-    PROMETHEUS_PUSHGATEWAY = 'localhost:9091' # default
-    
-    # Specify custom ColletorRegistry for metrics.
-    # If not set, extension will create one by itself. 
-    # Useful if you want to report custom metrics alongside with stats metrics.
-    PROMETHEUS_REGISTRY = prometheus_client.CollectorRegistry()
-    
+    PROMETHEUS_PUSHGATEWAY = 'localhost:9091'  # default
+
     # Metric name prefix
-    PROMETHEUS_METRIC_PREFIX = 'scrapy_prometheus' # default
+    PROMETHEUS_METRIC_PREFIX = 'scrapy_prometheus'  # default
     
     # Timeout for pushing metrics to pushgateway
-    PROMETHEUS_PUSH_TIMEOUT = 5
+    PROMETHEUS_PUSH_TIMEOUT = 5  # default
     
     # Method to use when pushing metrics
     # Read https://github.com/prometheus/pushgateway#put-method
-    PROMETHEUS_PUSH_METHOD = 'POST' # default
-    
-    
+    PROMETHEUS_PUSH_METHOD = 'POST'  # default
+
+    # Do not raise scrapy_prometheus.InvalidMetricType when stat is accessed as different type metric.
+    # For example, doing stats.inc_value('foo', 1) and then stats.set_value('foo', 2) will raise an error,
+    # Because metric of type Counter was already created for stat foo.
+    PROMETHEUS_SUPPRESS_TYPE_CHECK = False
+
+    # job label value, applied to all metrics.
+    PROMETHEUS_JOB = 'scrapy'  # default
+
+    # grouping label dict, applied to all metrics.
+    # by default it uses spider name.
+    PROMETHEUS_GROUPING_KEY = {'spider': <spider name>}
+
+
 How metrics are created
 =======================
 
-Metric name is build from ``PROMETHEUS_METRIC_PREFIX`` and first part of stat name splitted by `/`, and other parts will go to the label named ``substat``. Stat value must be either `int` or `float`. 
+Metric name is build from ``PROMETHEUS_METRIC_PREFIX`` and stat name, where all ``/`` are replaced with ``_``.
 
 For example:
 
-* stat ``foo: 67`` whill produce metric ``scrapy_prometheus_foo{instance="...",job="scrapy",substat=""} 67``
-* stat ``foo/bar: 67`` whill produce metric ``scrapy_prometheus_foo{instance="...",job="scrapy",substat="bar"} 67``
-* stat ``foo/bar/baz: 67`` whill produce metric ``scrapy_prometheus_foo{instance="...",job="scrapy",substat="bar/baz"} 67``
-
-Real world example
-------------------
-
-.. code-block:: text
-
-    # HELP scrapy_prometheus_download_latency Scrapy download latency
-    # TYPE scrapy_prometheus_download_latency summary
-    scrapy_prometheus_download_latency_sum{instance="",job="scrapy"} 113.67475485801697
-    scrapy_prometheus_download_latency_count{instance="",job="scrapy"} 34
-    # HELP scrapy_prometheus_spider_lifetime Scrapy spider lifetime
-    # TYPE scrapy_prometheus_spider_lifetime summary
-    scrapy_prometheus_spider_lifetime_sum{cls="StorySpider",instance="",job="scrapy"} 45
-    scrapy_prometheus_spider_lifetime_count{cls="StorySpider",instance="",job="scrapy"} 1
-    # HELP scrapy_prometheus_stats_downloader downloader
-    # TYPE scrapy_prometheus_stats_downloader gauge
-    scrapy_prometheus_stats_downloader{instance="",job="scrapy",substat="request_bytes"} 15186
-    scrapy_prometheus_stats_downloader{instance="",job="scrapy",substat="request_count"} 34
-    scrapy_prometheus_stats_downloader{instance="",job="scrapy",substat="request_method_count/GET"} 15
-    scrapy_prometheus_stats_downloader{instance="",job="scrapy",substat="request_method_count/POST"} 19
-    scrapy_prometheus_stats_downloader{instance="",job="scrapy",substat="response_bytes"} 805171
-    scrapy_prometheus_stats_downloader{instance="",job="scrapy",substat="response_count"} 34
-    scrapy_prometheus_stats_downloader{instance="",job="scrapy",substat="response_status_count/200"} 31
-    scrapy_prometheus_stats_downloader{instance="",job="scrapy",substat="response_status_count/406"} 3
-    # HELP scrapy_prometheus_stats_httperror httperror
-    # TYPE scrapy_prometheus_stats_httperror gauge
-    scrapy_prometheus_stats_httperror{instance="",job="scrapy",substat="response_ignored_count"} 3
-    scrapy_prometheus_stats_httperror{instance="",job="scrapy",substat="response_ignored_status_count/406"} 3
-    # HELP scrapy_prometheus_stats_item_scraped_count item_scraped_count
-    # TYPE scrapy_prometheus_stats_item_scraped_count gauge
-    scrapy_prometheus_stats_item_scraped_count{instance="",job="scrapy",substat=""} 2792
-    # HELP scrapy_prometheus_stats_log_count log_count
-    # TYPE scrapy_prometheus_stats_log_count gauge
-    scrapy_prometheus_stats_log_count{instance="",job="scrapy",substat="INFO"} 30
-    # HELP scrapy_prometheus_stats_memusage memusage
-    # TYPE scrapy_prometheus_stats_memusage gauge
-    scrapy_prometheus_stats_memusage{instance="",job="scrapy",substat="max"} 7.2527872e+07
-    scrapy_prometheus_stats_memusage{instance="",job="scrapy",substat="startup"} 7.2527872e+07
-    # HELP scrapy_prometheus_stats_request_depth_max request_depth_max
-    # TYPE scrapy_prometheus_stats_request_depth_max gauge
-    scrapy_prometheus_stats_request_depth_max{instance="",job="scrapy",substat=""} 2
-    # HELP scrapy_prometheus_stats_response_received_count response_received_count
-    # TYPE scrapy_prometheus_stats_response_received_count gauge
-    scrapy_prometheus_stats_response_received_count{instance="",job="scrapy",substat=""} 34
-    # HELP scrapy_prometheus_stats_scheduler scheduler
-    # TYPE scrapy_prometheus_stats_scheduler gauge
-    scrapy_prometheus_stats_scheduler{instance="",job="scrapy",substat="dequeued"} 34
-    scrapy_prometheus_stats_scheduler{instance="",job="scrapy",substat="dequeued/memory"} 34
-    scrapy_prometheus_stats_scheduler{instance="",job="scrapy",substat="enqueued"} 34
-    scrapy_prometheus_stats_scheduler{instance="",job="scrapy",substat="enqueued/memory"} 34
-
+* stat ``foo: 67`` whill produce metric ``scrapy_prometheus_foo{instance="...",job="scrapy",spider="..."} 67``
+* stat ``foo/bar: 67`` whill produce metric ``scrapy_prometheus_foo_bar{instance="...",job="scrapy",spider="..."} 67``
+* stat ``foo/bar/baz: 67`` whill produce metric ``scrapy_prometheus_foo_bar_baz{instance="...",job="scrapy",spider="..."} 67``

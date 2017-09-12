@@ -1,111 +1,97 @@
 import prometheus_client
-from scrapy import signals, exceptions
+from scrapy import statscollectors
+
+METRIC_COUNTER = prometheus_client.Counter
+METRIC_GAUGE = prometheus_client.Gauge
 
 
-class PrometheusStatsReport(object):
-    """
-    :param scrapy.crawler.Crawler crawler:
-    :param str pushgateway: Prometheus' pushgateway host. Default is localhost:9091
-    :param prometheus_client.CollectorRegistry registry: Registry to write metrics to.
-    """
-    crawler = None
-    pushgateway = None
+def push_to_gateway(pushgateway, registry, method='POST', timeout=5, job='scrapy', grouping_key=None):
+    if method.upper() == 'POST':
+        push = prometheus_client.pushadd_to_gateway
+    else:
+        push = prometheus_client.push_to_gateway
 
-    def __init__(self, crawler, registry=None, pushgateway=None):
-        self.crawler = crawler
-        self.pushgateway = pushgateway or 'localhost:9091'
-        self.registry = registry or prometheus_client.CollectorRegistry()
+    return push(pushgateway, job=job, grouping_key=grouping_key, timeout=timeout, registry=registry)
 
-    @classmethod
-    def from_crawler(cls, crawler):
+
+class InvalidMetricType(TypeError):
+    pass
+
+
+# noinspection PyProtectedMember,PyTypeChecker
+class PrometheusStatsCollector(statscollectors.StatsCollector, prometheus_client.CollectorRegistry):
+    def __init__(self, crawler):
         """
         :param scrapy.crawler.Crawler crawler:
-        :return: PrometheusStatsReport
         """
-        if not crawler.settings.getbool('PROMETHEUS_EXPORT_ENABLED'):
-            raise exceptions.NotConfigured('PROMETHEUS_EXPORT_ENABLED flag is not set')
+        self.crawler = crawler
+        statscollectors.StatsCollector.__init__(self, crawler)
+        prometheus_client.CollectorRegistry.__init__(self)
 
-        pushgateway = crawler.settings.get('PROMETHEUS_PUSHGATEWAY', None)
-        registry = crawler.settings.get('PROMETHEUS_REGISTRY', prometheus_client.CollectorRegistry())
-        if registry is not None and not isinstance(registry, prometheus_client.CollectorRegistry):
-            raise exceptions.NotConfigured('PROMETHEUS_REGISTRY is not a CollectorRegistry')
-
-        ext = cls(crawler, registry=registry, pushgateway=pushgateway)
-
-        crawler.signals.connect(ext.spider_closed, signal=signals.spider_closed)
-
-        return ext
-
-    def spider_closed(self, spider):
-        """
-        :param scrapy.spider.Spider spider:
-        """
-        registry = self.metrics_from_stats(self.crawler.stats.get_stats(), registry=self.registry)
-        self.push_to_gateway(spider, pushgateway=self.pushgateway, registry=registry)
-
-    def make_gauge_name(self, key):
+    def get_metric(self, key, metric_type):
         prefix = self.crawler.settings.get('PROMETHEUS_METRIC_PREFIX', 'scrapy_prometheus')
-        parts = key.split('/')
-        return '%s_%s' % (prefix, parts[0])
+        name = '%s_%s' % (prefix, key.replace('/', '_'))
 
-    def make_gauge_labelvalue(self, key):
-        return '/'.join(key.split('/')[1:])
+        if name not in self._names_to_collectors:
+            metric, created = metric_type(name, key, registry=self), True
+        else:
+            metric, created = self._names_to_collectors[name], False
+            if not hasattr(metric_type, '__wrapped__') or hasattr(metric_type, '__wrapped__') and not isinstance(metric,
+                                                                                                                 metric_type.__wrapped__):
+                if not self.crawler.settings.getbool('PROMETHEUS_SUPPRESS_TYPE_CHECK', False):
+                    raise InvalidMetricType('Wrong type %s for metric %s, which is %s' % (
+                        metric_type.__wrapped__.__name__, name, metric.__class__.__name__
+                    ))
+                else:
+                    return None, created
 
-    def metrics_from_stats(self, stats, registry=None):
-        """
-        Parses stats dict and populates either provided CollectorRegistry or creates a new empty one.
+        return metric, created
 
-        :param dict stats: Scrapy stats dict
-        :param prometheus_client.CollectorRegistry|None registry:
-        :rtype: prometheus_client.CollectorRegistry
-        :return: Registry with filled metrics
-        """
-        if not isinstance(stats, dict):
-            raise TypeError('stats is not dict, but %s' % stats.__class__.__name__)
+    def set_value(self, key, value, spider=None):
+        super(PrometheusStatsCollector, self).set_value(key, value, spider)
 
-        registry = registry or prometheus_client.CollectorRegistry()
+        if isinstance(value, (int, float)):
+            metric, _ = self.get_metric(key, METRIC_GAUGE)  # type: prometheus_client.Gauge
+            if metric:
+                metric.set(value)
 
-        gauges = dict()
+    def inc_value(self, key, count=1, start=0, spider=None):
+        super(PrometheusStatsCollector, self).inc_value(key, count, start, spider)
 
-        for key, value in stats.copy().items():
-            if not isinstance(value, (int, float)):
-                continue
-            name = self.make_gauge_name(key)
+        if isinstance(value, (int, float)):
+            metric, _ = self.get_metric(key, METRIC_COUNTER)  # type: prometheus_client.Counter
+            if metric:
+                metric.inc(count)
 
-            if name not in gauges:
-                # noinspection PyArgumentList
-                gauges[name] = prometheus_client.Gauge(
-                    name=name,
-                    documentation=key,
-                    labelnames=['substat'],
-                    registry=registry)
+    def max_value(self, key, value, spider=None):
+        super(PrometheusStatsCollector, self).max_value(key, value, spider)
 
-            gauges[name].labels(substat=self.make_gauge_labelvalue(key)).set(value)
+        if isinstance(value, (int, float)):
+            metric, _ = self.get_metric(key, METRIC_GAUGE)  # type: prometheus_client.Gauge
+            if metric:
+                metric._value.set(max(metric._value.get(), value))
 
-        return registry
+    def min_value(self, key, value, spider=None):
+        super(PrometheusStatsCollector, self).min_value(key, value, spider)
 
-    def push_to_gateway(self, spider, pushgateway=None, registry=None, job='scrapy', grouping_key=None, push_method=None):
-        """
-        :param scrapy.spider.Spider spider:
-        :param str pushgateway:
-        :param prometheus_client.CollectorRegistry registry:
-        :param str job:
-        :param str grouping_key:
-        """
-        grouping_key = grouping_key or prometheus_client.instance_ip_grouping_key()
-        timeout = self.crawler.settings.getint('PROMETHEUS_PUSH_TIMEOUT', 5)
-        pushgateway = pushgateway or self.pushgateway
-        registry = registry or self.registry
-        push_method = push_method or self.crawler.settings.get('PROMETHEUS_PUSH_METHOD', 'POST')
+        if isinstance(value, (int, float)):
+            metric, _ = self.get_metric(key, METRIC_GAUGE)  # type: prometheus_client.Gauge
+            if metric:
+                metric._value.set(min(metric._value.get(), value))
+
+    def _persist_stats(self, stats, spider):
+        super(PrometheusStatsCollector, self)._persist_stats(stats, spider)
 
         try:
-            if push_method.upper() == 'POST':
-                method = prometheus_client.pushadd_to_gateway
-            else:
-                method = prometheus_client.push_to_gateway
-
-            method(pushgateway, job=job, grouping_key=grouping_key, timeout=timeout, registry=registry)
+            push_to_gateway(
+                pushgateway=self.crawler.settings.get('PROMETHEUS_PUSHGATEWAY', '127.0.0.1:9091'),
+                registry=self,
+                method=self.crawler.settings.get('PROMETHEUS_PUSH_METHOD', 'POST'),
+                timeout=self.crawler.settings.get('PROMETHEUS_PUSH_TIMEOUT', 5),
+                job=self.crawler.settings.get('PROMETHEUS_JOB', 'scrapy'),
+                grouping_key=self.crawler.settings.get('PROMETHEUS_GROUPING_KEY', {'spider': spider.name})
+            )
         except:
-            spider.logger.exception('Failed to push metrics to %s', pushgateway)
+            spider.logger.exception('Failed to push metrics to pushgateway')
         else:
-            spider.logger.info('Pushed metrics to %s', pushgateway)
+            spider.logger.info('Pushed metrics to pushgateway')
