@@ -58,7 +58,7 @@ class PrometheusStatsCollector(statscollectors.StatsCollector, prometheus_client
     def inc_value(self, key, count=1, start=0, spider=None):
         super(PrometheusStatsCollector, self).inc_value(key, count, start, spider)
 
-        if isinstance(value, (int, float)):
+        if isinstance(count, (int, float)):
             metric, _ = self.get_metric(key, METRIC_COUNTER)  # type: prometheus_client.Counter
             if metric:
                 metric.inc(count)
