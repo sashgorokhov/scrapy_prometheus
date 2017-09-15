@@ -1,3 +1,5 @@
+import socket
+
 import prometheus_client
 from scrapy import statscollectors
 
@@ -79,6 +81,15 @@ class PrometheusStatsCollector(statscollectors.StatsCollector, prometheus_client
             if metric:
                 metric._value.set(min(metric._value.get(), value))
 
+    def get_grouping_key(self, spider):
+        grouping_key = {'spider': spider.name}
+        try:
+            grouping_key['instance'] = socket.gethostname()
+        except:
+            pass
+
+        return grouping_key
+
     def _persist_stats(self, stats, spider):
         super(PrometheusStatsCollector, self)._persist_stats(stats, spider)
 
@@ -89,7 +100,7 @@ class PrometheusStatsCollector(statscollectors.StatsCollector, prometheus_client
                 method=self.crawler.settings.get('PROMETHEUS_PUSH_METHOD', 'POST'),
                 timeout=self.crawler.settings.get('PROMETHEUS_PUSH_TIMEOUT', 5),
                 job=self.crawler.settings.get('PROMETHEUS_JOB', 'scrapy'),
-                grouping_key=self.crawler.settings.get('PROMETHEUS_GROUPING_KEY', {'spider': spider.name})
+                grouping_key=self.crawler.settings.get('PROMETHEUS_GROUPING_KEY', self.get_grouping_key(spider))
             )
         except:
             spider.logger.exception('Failed to push metrics to pushgateway')
