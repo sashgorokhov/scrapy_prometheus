@@ -81,9 +81,9 @@ def test_invalid_metric_type(crawler):
 ])
 def test_pushgateway_report(key, value, metric_type, metric_name, metric_value, crawler, spider):
     if scrapy_prometheus.METRIC_COUNTER == metric_type:
-        crawler.stats.inc_value(key, value)
+        crawler.stats.inc_value(key, value, spider=spider)
     elif scrapy_prometheus.METRIC_GAUGE == metric_type:
-        crawler.stats.set_value(key, value)
+        crawler.stats.set_value(key, value, spider=spider)
     else:
         raise ValueError()
 

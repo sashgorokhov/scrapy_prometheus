@@ -1,8 +1,9 @@
+import functools
 import socket
 from collections import defaultdict
 
 import prometheus_client
-from scrapy import statscollectors
+from scrapy import statscollectors, signals
 
 METRIC_COUNTER = prometheus_client.Counter
 METRIC_GAUGE = prometheus_client.Gauge
@@ -21,6 +22,20 @@ class InvalidMetricType(TypeError):
     pass
 
 
+def _forced_spider(func):
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        """
+        :param PrometheusStatsCollector self:
+        """
+        spider = getattr(self, '_forced_spider', None)
+        if spider:
+            kwargs.setdefault('spider', spider)
+        return func(self, *args, **kwargs)
+
+    return wrapper
+
+
 class PrometheusStatsCollector(statscollectors.StatsCollector):
     def __init__(self, crawler):
         """
@@ -28,24 +43,35 @@ class PrometheusStatsCollector(statscollectors.StatsCollector):
         """
         self.crawler = crawler
         self.registries = defaultdict(lambda: prometheus_client.CollectorRegistry())
+        self.crawler.signals.connect(self.engine_stopped, signal=signals.engine_stopped)
         super(PrometheusStatsCollector, self).__init__(crawler)
+
+    def forced_spider(self, spider):
+        """
+        Force this spider to be used when writing metrics.
+
+        :param scrapy.spider.Spider spider:
+        """
+        self._forced_spider = spider
 
     def get_registry(self, spider):
         """
+        Return CollectorRegistry associated with spider. To get default CollectorRegistry, pass None.
+
         :param scrapy.spider.Spider spider:
         :rtype: prometheus_client.CollectorRegistry
         """
         return self.registries[getattr(spider, 'name', None)]
 
     # noinspection PyProtectedMember
-    def get_metric(self, key, metric_type, spider=None):
+    def get_metric(self, key, metric_type, spider=None, labels=None):
         prefix = self.crawler.settings.get('PROMETHEUS_METRIC_PREFIX', 'scrapy_prometheus')
         name = '%s_%s' % (prefix, key.replace('/', '_'))
 
         registry = self.get_registry(spider)
 
         if name not in registry._names_to_collectors:
-            metric, created = metric_type(name, key, ['spider'], registry=registry), True
+            metric, created = metric_type(name, key, labels, registry=registry), True
         else:
             metric, created = registry._names_to_collectors[name], False
             if not hasattr(metric_type, '__wrapped__') or hasattr(metric_type, '__wrapped__') and not isinstance(metric,
@@ -57,8 +83,9 @@ class PrometheusStatsCollector(statscollectors.StatsCollector):
                 else:
                     return None, created
 
-        return metric.labels(spider=getattr(spider, 'name', "")), created
+        return metric, created
 
+    @_forced_spider
     def set_value(self, key, value, spider=None):
         super(PrometheusStatsCollector, self).set_value(key, value, spider)
 
@@ -67,6 +94,7 @@ class PrometheusStatsCollector(statscollectors.StatsCollector):
             if metric:
                 metric.set(value)
 
+    @_forced_spider
     def inc_value(self, key, count=1, start=0, spider=None):
         super(PrometheusStatsCollector, self).inc_value(key, count, start, spider)
 
@@ -75,6 +103,7 @@ class PrometheusStatsCollector(statscollectors.StatsCollector):
             if metric:
                 metric.inc(count)
 
+    @_forced_spider
     def max_value(self, key, value, spider=None):
         super(PrometheusStatsCollector, self).max_value(key, value, spider)
 
@@ -83,6 +112,7 @@ class PrometheusStatsCollector(statscollectors.StatsCollector):
             if metric:
                 metric._value.set(max(metric._value.get(), value))
 
+    @_forced_spider
     def min_value(self, key, value, spider=None):
         super(PrometheusStatsCollector, self).min_value(key, value, spider)
 
@@ -92,7 +122,10 @@ class PrometheusStatsCollector(statscollectors.StatsCollector):
                 metric._value.set(min(metric._value.get(), value))
 
     def get_grouping_key(self, spider=None):
-        grouping_key = {}
+        grouping_key = {
+            'spider': spider.name if spider else ''
+        }
+
         try:
             grouping_key['instance'] = socket.gethostname()
         except:
@@ -100,7 +133,7 @@ class PrometheusStatsCollector(statscollectors.StatsCollector):
 
         return grouping_key
 
-    def _persist_stats(self, stats, spider):
+    def _persist_stats(self, stats, spider=None):
         super(PrometheusStatsCollector, self)._persist_stats(stats, spider)
 
         if spider and spider.name not in self.registries:
@@ -122,3 +155,6 @@ class PrometheusStatsCollector(statscollectors.StatsCollector):
         else:
             if spider:
                 spider.logger.info('Pushed "%s" spider metrics to pushgateway', spider.name)
+
+    def engine_stopped(self):
+        self._persist_stats(self._stats, None)

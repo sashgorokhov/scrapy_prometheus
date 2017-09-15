@@ -3,7 +3,7 @@ from distutils.core import setup
 with open('README.rst') as readme:
     long_description = readme.read()
 
-VERSION = '0.4.2'
+VERSION = '0.4.3'
 
 setup(
     install_requires=['prometheus_client'],
@@ -14,14 +14,13 @@ setup(
     download_url='https://github.com/sashgorokhov/scrapy_prometheus/archive/master.zip',
     keywords=['scrapy', 'prometheus', 'pushgateway', 'monitoring'],
     classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
         'Environment :: Plugins',
         'Framework :: Scrapy',
         'License :: OSI Approved :: MIT License',
         'Topic :: System :: Monitoring',
         'Programming Language :: Python :: 2.7',
-        'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
