@@ -91,7 +91,7 @@ class PrometheusStatsCollector(statscollectors.StatsCollector):
             if metric:
                 metric._value.set(min(metric._value.get(), value))
 
-    def get_grouping_key(self, spider):
+    def get_grouping_key(self, spider=None):
         grouping_key = {}
         try:
             grouping_key['instance'] = socket.gethostname()
@@ -110,13 +110,15 @@ class PrometheusStatsCollector(statscollectors.StatsCollector):
         try:
             push_to_gateway(
                 pushgateway=self.crawler.settings.get('PROMETHEUS_PUSHGATEWAY', '127.0.0.1:9091'),
-                registry=self.registries[spider.name],
+                registry=self.registries[spider.name if spider else None],
                 method=self.crawler.settings.get('PROMETHEUS_PUSH_METHOD', 'POST'),
                 timeout=self.crawler.settings.get('PROMETHEUS_PUSH_TIMEOUT', 5),
                 job=self.crawler.settings.get('PROMETHEUS_JOB', 'scrapy'),
                 grouping_key=self.crawler.settings.get('PROMETHEUS_GROUPING_KEY', self.get_grouping_key(spider))
             )
         except:
-            spider.logger.exception('Failed to push "%s" spider metrics to pushgateway', spider.name)
+            if spider:
+                spider.logger.exception('Failed to push "%s" spider metrics to pushgateway', spider.name)
         else:
-            spider.logger.info('Pushed "%s" spider metrics to pushgateway', spider.name)
+            if spider:
+                spider.logger.info('Pushed "%s" spider metrics to pushgateway', spider.name)
