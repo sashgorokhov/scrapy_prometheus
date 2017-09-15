@@ -1,4 +1,5 @@
 import socket
+from collections import defaultdict
 
 import prometheus_client
 from scrapy import statscollectors
@@ -20,24 +21,33 @@ class InvalidMetricType(TypeError):
     pass
 
 
-# noinspection PyProtectedMember,PyTypeChecker
-class PrometheusStatsCollector(statscollectors.StatsCollector, prometheus_client.CollectorRegistry):
+class PrometheusStatsCollector(statscollectors.StatsCollector):
     def __init__(self, crawler):
         """
         :param scrapy.crawler.Crawler crawler:
         """
         self.crawler = crawler
-        statscollectors.StatsCollector.__init__(self, crawler)
-        prometheus_client.CollectorRegistry.__init__(self)
+        self.registries = defaultdict(lambda: prometheus_client.CollectorRegistry())
+        super(PrometheusStatsCollector, self).__init__(crawler)
 
-    def get_metric(self, key, metric_type):
+    def get_registry(self, spider):
+        """
+        :param scrapy.spider.Spider spider:
+        :rtype: prometheus_client.CollectorRegistry
+        """
+        return self.registries[getattr(spider, 'name', None)]
+
+    # noinspection PyProtectedMember
+    def get_metric(self, key, metric_type, spider=None):
         prefix = self.crawler.settings.get('PROMETHEUS_METRIC_PREFIX', 'scrapy_prometheus')
         name = '%s_%s' % (prefix, key.replace('/', '_'))
 
-        if name not in self._names_to_collectors:
-            metric, created = metric_type(name, key, registry=self), True
+        registry = self.get_registry(spider)
+
+        if name not in registry._names_to_collectors:
+            metric, created = metric_type(name, key, ['spider'], registry=registry), True
         else:
-            metric, created = self._names_to_collectors[name], False
+            metric, created = registry._names_to_collectors[name], False
             if not hasattr(metric_type, '__wrapped__') or hasattr(metric_type, '__wrapped__') and not isinstance(metric,
                                                                                                                  metric_type.__wrapped__):
                 if not self.crawler.settings.getbool('PROMETHEUS_SUPPRESS_TYPE_CHECK', False):
@@ -47,13 +57,13 @@ class PrometheusStatsCollector(statscollectors.StatsCollector, prometheus_client
                 else:
                     return None, created
 
-        return metric, created
+        return metric.labels(spider=getattr(spider, 'name', "")), created
 
     def set_value(self, key, value, spider=None):
         super(PrometheusStatsCollector, self).set_value(key, value, spider)
 
         if isinstance(value, (int, float)):
-            metric, _ = self.get_metric(key, METRIC_GAUGE)  # type: prometheus_client.Gauge
+            metric, _ = self.get_metric(key, METRIC_GAUGE, spider=spider)
             if metric:
                 metric.set(value)
 
@@ -61,7 +71,7 @@ class PrometheusStatsCollector(statscollectors.StatsCollector, prometheus_client
         super(PrometheusStatsCollector, self).inc_value(key, count, start, spider)
 
         if isinstance(count, (int, float)):
-            metric, _ = self.get_metric(key, METRIC_COUNTER)  # type: prometheus_client.Counter
+            metric, _ = self.get_metric(key, METRIC_COUNTER, spider=spider)
             if metric:
                 metric.inc(count)
 
@@ -69,7 +79,7 @@ class PrometheusStatsCollector(statscollectors.StatsCollector, prometheus_client
         super(PrometheusStatsCollector, self).max_value(key, value, spider)
 
         if isinstance(value, (int, float)):
-            metric, _ = self.get_metric(key, METRIC_GAUGE)  # type: prometheus_client.Gauge
+            metric, _ = self.get_metric(key, METRIC_GAUGE, spider=spider)
             if metric:
                 metric._value.set(max(metric._value.get(), value))
 
@@ -77,32 +87,36 @@ class PrometheusStatsCollector(statscollectors.StatsCollector, prometheus_client
         super(PrometheusStatsCollector, self).min_value(key, value, spider)
 
         if isinstance(value, (int, float)):
-            metric, _ = self.get_metric(key, METRIC_GAUGE)  # type: prometheus_client.Gauge
+            metric, _ = self.get_metric(key, METRIC_GAUGE, spider=spider)
             if metric:
                 metric._value.set(min(metric._value.get(), value))
 
     def get_grouping_key(self, spider):
-        grouping_key = {'spider': spider.name}
+        grouping_key = {}
         try:
             grouping_key['instance'] = socket.gethostname()
         except:
-            pass
+            grouping_key['instance'] = ""
 
         return grouping_key
 
     def _persist_stats(self, stats, spider):
         super(PrometheusStatsCollector, self)._persist_stats(stats, spider)
 
+        if spider.name not in self.registries:
+            spider.logger.warning('%s spider not found in collector registries', spider.name)
+            return
+
         try:
             push_to_gateway(
                 pushgateway=self.crawler.settings.get('PROMETHEUS_PUSHGATEWAY', '127.0.0.1:9091'),
-                registry=self,
+                registry=self.registries[spider.name],
                 method=self.crawler.settings.get('PROMETHEUS_PUSH_METHOD', 'POST'),
                 timeout=self.crawler.settings.get('PROMETHEUS_PUSH_TIMEOUT', 5),
                 job=self.crawler.settings.get('PROMETHEUS_JOB', 'scrapy'),
                 grouping_key=self.crawler.settings.get('PROMETHEUS_GROUPING_KEY', self.get_grouping_key(spider))
             )
         except:
-            spider.logger.exception('Failed to push metrics to pushgateway')
+            spider.logger.exception('Failed to push "%s" spider metrics to pushgateway', spider.name)
         else:
-            spider.logger.info('Pushed metrics to pushgateway')
+            spider.logger.info('Pushed "%s" spider metrics to pushgateway', spider.name)

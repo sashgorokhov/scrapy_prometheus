@@ -64,7 +64,7 @@ def test_metric_name_and_substat(stat_name, metric_name, crawler):
     metric.inc()
 
     assert created
-    assert metric_name in crawler.stats._names_to_collectors
+    assert metric_name in crawler.stats.get_registry(None)._names_to_collectors
 
 
 def test_invalid_metric_type(crawler):

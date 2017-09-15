@@ -45,15 +45,15 @@ It supports two metric types: ``Counter`` and ``Gauge``. Stat metric type is det
 the stat: ``stats.inc_value`` will create a ``Counter`` metric, while other methods,
 ``stats.set_value``, ``stats.max_value``, ``stats.min_value``, will create ``Gauge``.
 
+All metrics will have a `spider` label attached with spider name.
+
 Stat value must be either ``int`` or ``float``.
 
 Note, that trying to perform action on a metric, that is not supposed to be used with this
 action (set_value on Counter or inc_value on Gauge) will produce
 ``scrapy_prometheus.InvalidMetricType`` error. To suppress it, set ``PROMETHEUS_SUPPRESS_TYPE_CHECK`` to True.
 
-If you want to create other custom metrics, there are good news for you: ``scrapy_prometheus.PrometheusStatsCollector`` is
-also a ``prometheus_client.CollectorRegistry``. Multi-inheritance rules.
-Just specify it as a registry, when creating a metric.
+If you want to create custom metrics, you can access your spider's CollectorRegistry by using ``stats.get_registry(spider)``.
 
 Available settings
 ==================
@@ -82,8 +82,8 @@ Available settings
     PROMETHEUS_JOB = 'scrapy'  # default
 
     # grouping label dict, applied to all metrics.
-    # by default it uses spider name.
-    PROMETHEUS_GROUPING_KEY = {'spider': <spider name>}
+    # by default it is an instance key with hostname value.
+    PROMETHEUS_GROUPING_KEY = {'instance': <hostname>}
 
 
 How metrics are created
