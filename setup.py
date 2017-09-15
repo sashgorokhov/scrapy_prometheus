@@ -3,7 +3,7 @@ from distutils.core import setup
 with open('README.rst') as readme:
     long_description = readme.read()
 
-VERSION = '0.4'
+VERSION = '0.4.1'
 
 setup(
     install_requires=['prometheus_client'],

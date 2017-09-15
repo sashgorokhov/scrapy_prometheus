@@ -103,7 +103,7 @@ class PrometheusStatsCollector(statscollectors.StatsCollector):
     def _persist_stats(self, stats, spider):
         super(PrometheusStatsCollector, self)._persist_stats(stats, spider)
 
-        if spider.name not in self.registries:
+        if spider and spider.name not in self.registries:
             spider.logger.warning('%s spider not found in collector registries', spider.name)
             return
 
