@@ -75,10 +75,10 @@ class PrometheusStatsCollector(statscollectors.StatsCollector):
             try:
                 metric, created = metric_type(name, key, labels, registry=registry), True
             except ValueError as ex:
-                if not ex.args[0].startswith("Duplicated timeseries"):
-                    raise ex
-
-                return None, False
+                msg = ex.args[0]
+                if msg.startswith("Duplicated timeseries") or msg.startswith("Invalid metric name"):
+                    return None, False
+                raise ex
 
         else:
             metric, created = registry._names_to_collectors[name], False
