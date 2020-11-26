@@ -65,13 +65,21 @@ class PrometheusStatsCollector(statscollectors.StatsCollector):
 
     # noinspection PyProtectedMember
     def get_metric(self, key, metric_type, spider=None, labels=None):
+        labels = labels or {}
         prefix = self.crawler.settings.get('PROMETHEUS_METRIC_PREFIX', 'scrapy_prometheus')
         name = '%s_%s' % (prefix, key.replace('/', '_'))
 
         registry = self.get_registry(spider)
 
         if name not in registry._names_to_collectors:
-            metric, created = metric_type(name, key, labels, registry=registry), True
+            try:
+                metric, created = metric_type(name, key, labels, registry=registry), True
+            except ValueError as ex:
+                msg = ex.args[0]
+                if msg.startswith("Duplicated timeseries") or msg.startswith("Invalid metric name"):
+                    return None, False
+                raise ex
+
         else:
             metric, created = registry._names_to_collectors[name], False
             if not hasattr(metric_type, '__wrapped__') or hasattr(metric_type, '__wrapped__') and not isinstance(metric,
