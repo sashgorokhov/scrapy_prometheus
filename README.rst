@@ -44,6 +44,8 @@ creates prometheus metrics and pushes them to pushgateway service on spider clos
 It supports two metric types: ``Counter`` and ``Gauge``. Stat metric type is determined by operation used on
 the stat: ``stats.inc_value`` will create a ``Counter`` metric, while other methods,
 ``stats.set_value``, ``stats.max_value``, ``stats.min_value``, will create ``Gauge``.
+You can optionally pass a `labels` array into all of these function calls, which will be passed
+through to the new Prometheus metric.
 
 All metrics will have a `spider` label attached with spider name.
 
@@ -54,6 +56,7 @@ action (set_value on Counter or inc_value on Gauge) will produce
 ``scrapy_prometheus.InvalidMetricType`` error. To suppress it, set ``PROMETHEUS_SUPPRESS_TYPE_CHECK`` to True.
 
 If you want to create custom metrics, you can access your spider's CollectorRegistry by using ``stats.get_registry(spider)``.
+
 
 Available settings
 ==================
@@ -81,10 +84,86 @@ Available settings
     # job label value, applied to all metrics.
     PROMETHEUS_JOB = 'scrapy'  # default
 
-    # grouping label dict, applied to all metrics.
-    # by default it is an instance key with hostname value.
-    PROMETHEUS_GROUPING_KEY = {'instance': <hostname>}
+    # If you want a set of labels to be applied to all of your metrics then you can assign a dictionary to this variable.
+    PROMETHEUS_DEFAULT_LABELS = {'instance': <hostname>}
 
+
+Installation
+============
+
+Install scrapy-prometheus-exporter using ``pip``::
+
+    $ pip install scrapy-prometheus-exporter
+
+Configuration
+=============
+
+First, you need to include the extension to your ``EXTENSIONS`` dict in
+``settings.py``, for example::
+
+    EXTENSIONS = {
+        'scrapy_prometheus_exporter.prometheus.WebService': 500,
+    }
+
+By default the extension is enabled. To disable the extension you need to
+set `PROMETHEUS_ENABLED`_ to ``False``.
+
+The web server will listen on a port specified in `PROMETHEUS_PORT`_
+(by default, it will try to listen on port 9410)
+
+The endpoint for accessing exported metrics is::
+
+    http://0.0.0.0:9410/metrics
+
+
+
+Prometheus endpoint ettings
+========
+
+These are the settings that control the metrics exporter:
+
+PROMETHEUS_ENDPOINT_ENABLED
+------------------
+
+Default: ``True``
+
+A boolean which specifies if the exporter will be enabled (provided its
+extension is also enabled).
+
+
+PROMETHEUS_PORT
+---------------
+
+Default: ``[9410]``
+
+The port to use for the web service. If set to ``None`` or ``0``, a
+dynamically assigned port is used.
+
+PROMETHEUS_HOST
+---------------
+
+Default: ``'0.0.0.0'``
+
+The interface the web service should listen on.
+
+
+PROMETHEUS_PATH
+---------------
+
+Default: ``'metrics'``
+
+The url path to access exported metrics Example::
+
+    http://0.0.0.0:9410/metrics
+
+
+PROMETHEUS_UPDATE_INTERVAL
+--------------------------
+
+Default: ``30``
+
+This extensions periodically collects stats for exporting. The interval in
+seconds between metrics updates can be controlled with this setting.
 
 How metrics are created
 =======================

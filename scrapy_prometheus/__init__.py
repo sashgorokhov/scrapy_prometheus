@@ -1,0 +1,1 @@
+from .scrapy_prometheus import PrometheusStatsCollector
